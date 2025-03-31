@@ -168,37 +168,31 @@
             font-size: 1.2rem;
             margin-right: 5px;
         }
+        #loading-indicator {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
     </style>
 </head>
 <body>
 
 <div class="container-fluid">
     <h2 class="text-center my-4" id="page-title">Today's Patient Overview</h2>
-    <button id="refresh-btn" class="btn btn-primary ms-2">Refresh Data</button>
+    
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <button id="refresh-btn" class="btn btn-primary">
+            <i class="bi bi-arrow-repeat"></i> Refresh Data
+        </button>
+        <span id="last-updated" class="text-muted">Last updated: Never</span>
+    </div>
 
-    <!-- Patient Preview Table -->
-    <table class="table table-striped patient-preview-table" id="patient-preview-table">
-        <thead>
-            <tr>
-                <th>Patient Name</th>
-                <th>MRN</th>
-                <th>Status</th>
-                <th>Start Time</th>
-                <th>End Time</th>
-                <th>Diagnosis</th>
-            </tr>
-        </thead>
-        <tbody id="patient-preview-body">
-            <tr>
-                <td colspan="6" class="text-center">
-                    <div class="spinner-border text-primary" role="status">
-                        <span class="visually-hidden">Loading...</span>
-                    </div>
-                    <p>Fetching patient data...</p>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+    <div id="loading-indicator">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p>Fetching patient data...</p>
+    </div>
 
     <!-- Status Filter Section -->
     <div class="status-section">
@@ -229,68 +223,195 @@
             <div class="status-tab" data-filter="treatment">Treatment</div>
         </div>
     </div>
+
+    <!-- Patient Preview Table -->
+    <table class="table table-striped patient-preview-table" id="patient-preview-table">
+        <thead>
+            <tr>
+                <th>Patient Name</th>
+                <th>MRN</th>
+                <th>Status</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Diagnosis</th>
+            </tr>
+        </thead>
+        <tbody id="patient-preview-body">
+            <!-- Patient data will be inserted here -->
+        </tbody>
+    </table>
     
     <!-- Patient Cards Section -->
-    <div id="patients-container" class="row">
+    <div id="patients-container" class="row mt-4">
         <!-- Patient cards will be inserted here -->
-        <div class="col-12 empty-state" id="empty-state">
-            <h3>No patients scheduled for today</h3>
-            <p class="text-muted">Patient information will appear here when scheduled</p>
-        </div>
+    </div>
+    
+    <div class="col-12 empty-state" id="empty-state" style="display: none;">
+        <h3>No patients scheduled for today</h3>
+        <p class="text-muted">Patient information will appear here when scheduled</p>
     </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script>
-    
+    // Format time from ISO string to readable time
     function formatTime(timeString) {
         if (!timeString) return 'N/A';
         const date = new Date(timeString);
         return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     }
 
+    // Format missing data
+    function formatData(data) {
+        return data || 'N/A';
+    }
+
+    // Update counters based on patient statuses
+    function updateCounters(patients) {
+        const statusCount = {
+            'waiting': 0,
+            'mri': 0,
+            'planning': 0,
+            'treatment': 0
+        };
+        
+        // Count patients by status
+        patients.forEach(patient => {
+            const status = patient.Status.toLowerCase();
+            if (statusCount.hasOwnProperty(status)) {
+                statusCount[status]++;
+            }
+        });
+        
+        // Update counter displays
+        $('#waiting-count').text(statusCount.waiting);
+        $('#mri-count').text(statusCount.mri);
+        $('#planning-count').text(statusCount.planning);
+        $('#treatment-count').text(statusCount.treatment);
+    }
+
+    // Filter patients based on selected status
+    function filterPatients(status) {
+        if (status === 'all') {
+            $('.patient-card-container').show();
+        } else {
+            $('.patient-card-container').hide();
+            $(`.patient-card-container[data-status="${status}"]`).show();
+        }
+    }
+
+    // Load patients from the API
     function loadPatients() {
+        $('#loading-indicator').show();
         $('#patient-preview-body').empty();
         $('#patients-container').empty();
-        if (fakePatients.length > 0) {
-            $('#empty-state').hide();
-        } else {
-            $('#empty-state').show();
-        }
-
-        fakePatients.forEach(patient => {
-            // Table Row
-            const row = `
-                <tr>
-                    <td>${patient.Patient_Name}</td>
-                    <td>${patient.MRN}</td>
-                    <td><span class="badge status-${patient.Status.toLowerCase()}">${patient.Status}</span></td>
-                    <td>${formatTime(patient.Start_Time)}</td>
-                    <td>${formatTime(patient.End_Time)}</td>
-                    <td>${patient.Diagnosis}</td>
-                </tr>`;
-            $('#patient-preview-body').append(row);
-
-            // Detailed Card
-            const card = `
-                <div class="col-md-6 patient-card-container" data-status="${patient.Status.toLowerCase()}">
-                    <div class="patient-card card-status-${patient.Status.toLowerCase()}">
-                        <h5>${patient.Patient_Name}</h5>
-                        <p><strong>MRN:</strong> ${patient.MRN}</p>
-                        <p><strong>Status:</strong> ${patient.Status}</p>
-                        <p><strong>Diagnosis:</strong> ${patient.Diagnosis}</p>
-                        <p><strong>Start Time:</strong> ${formatTime(patient.Start_Time)}</p>
-                        <p><strong>End Time:</strong> ${formatTime(patient.End_Time)}</p>
-                        <p><strong>Age:</strong> ${patient.Age} (${patient.Sex})</p>
-                        <p><strong>Plan:</strong> ${patient.Plan}</p>
-                        <p><strong>Fixation:</strong> ${patient.Fixation}</p>
-                        <p><strong>Dose:</strong> ${patient.Dose}</p>
-                        <p><strong>Targets:</strong> ${patient.Targets}</p>
-                        <p><strong>Shots:</strong> ${patient.Shots}</p>
-                        <p><strong>Gamma Index:</strong> ${patient.Gamma}</p>
-                    </div>
-                </div>`;
-            $('#patient-cards-container').append(card);
+        
+        $.ajax({
+            url: '/patients',
+            method: 'GET',
+            dataType: 'json',
+            success: function(patients) {
+                if (patients.length > 0) {
+                    $('#empty-state').hide();
+                    
+                    // Update counters
+                    updateCounters(patients);
+                    
+                    // Display patients in table and cards
+                    patients.forEach(patient => {
+                        const status = patient.Status.toLowerCase();
+                        
+                        // Table row
+                        const row = `
+                            <tr>
+                                <td>${patient.Patient_Name}</td>
+                                <td>${patient.MRN}</td>
+                                <td><span class="badge status-${status}">${patient.Status}</span></td>
+                                <td>${formatTime(patient.Start_Time)}</td>
+                                <td>${formatTime(patient.End_Time)}</td>
+                                <td>${formatData(patient.Diagnosis)}</td>
+                            </tr>`;
+                        $('#patient-preview-body').append(row);
+                        
+                        // Detailed card
+                        const card = `
+                            <div class="col-md-6 patient-card-container" data-status="${status}">
+                                <div class="patient-card status-${status}">
+                                    <div class="patient-header">
+                                        <div class="patient-name">${patient.Patient_Name}</div>
+                                        <span class="status-badge status-${status}">${patient.Status}</span>
+                                    </div>
+                                    <div class="patient-info">
+                                        <div class="info-group">
+                                            <div class="info-label">MRN</div>
+                                            <div class="info-value">${patient.MRN}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Age/Sex</div>
+                                            <div class="info-value">${formatData(patient.Age)} (${formatData(patient.Sex)})</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Diagnosis</div>
+                                            <div class="info-value">${formatData(patient.Diagnosis)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Start Time</div>
+                                            <div class="info-value">${formatTime(patient.Start_Time)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">End Time</div>
+                                            <div class="info-value">${formatTime(patient.End_Time)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Plan</div>
+                                            <div class="info-value">${formatData(patient.Plan)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Fixation</div>
+                                            <div class="info-value">${formatData(patient.Fixation)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Dose</div>
+                                            <div class="info-value">${formatData(patient.Dose)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Targets</div>
+                                            <div class="info-value">${formatData(patient.Targets)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Shots</div>
+                                            <div class="info-value">${formatData(patient.Shots)}</div>
+                                        </div>
+                                        <div class="info-group">
+                                            <div class="info-label">Gamma Index</div>
+                                            <div class="info-value">${formatData(patient.Gamma)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>`;
+                        $('#patients-container').append(card);
+                    });
+                    
+                    // Update last refresh time
+                    const now = new Date();
+                    $('#last-updated').text('Last updated: ' + now.toLocaleTimeString());
+                } else {
+                    $('#empty-state').show();
+                    // Reset counters if no patients
+                    $('#waiting-count').text('0');
+                    $('#mri-count').text('0');
+                    $('#planning-count').text('0');
+                    $('#treatment-count').text('0');
+                }
+                
+                $('#loading-indicator').hide();
+            },
+            error: function(error) {
+                console.error('Error fetching patient data:', error);
+                $('#loading-indicator').hide();
+                $('#patient-preview-body').html('<tr><td colspan="6" class="text-center text-danger">Error loading patient data. Please try again.</td></tr>');
+                $('#empty-state').show().html('<h3 class="text-danger">Error</h3><p>Failed to load patient data. Please refresh the page or try again later.</p>');
+            }
         });
     }
 
@@ -303,19 +424,25 @@
         document.title = `Hospital Patient Dashboard - ${formattedDate}`;
     }
 
-    $('.filter-btn').click(function() {
-        const status = $(this).data('status');
-        if (status === 'all') {
-            $('.patient-card-container').show();
-        } else {
-            $('.patient-card-container').hide();
-            $(`.patient-card-container[data-status="${status}"]`).show();
-        }
-    });
-
+    // Event handlers
     $(document).ready(function() {
         updateTitleWithDate();
         loadPatients();
+        
+        // Refresh button handler
+        $('#refresh-btn').click(function() {
+            loadPatients();
+        });
+        
+        // Status tab filtering
+        $('.status-tab').click(function() {
+            $('.status-tab').removeClass('active');
+            $(this).addClass('active');
+            filterPatients($(this).data('filter'));
+        });
+        
+        // Set up auto-refresh every 5 minutes
+        setInterval(loadPatients, 5 * 60 * 1000);
     });
 </script>
 </body>
