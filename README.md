@@ -35,6 +35,11 @@ export FLASK_APP=webapp/app.py
 python -m flask run
 flask run
 ```
+```
+$env:FLASK_APP="webapp/app.py"
+flask run
+```
+
 
 fresh environment
 
