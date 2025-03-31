@@ -91,6 +91,67 @@ def auto_update():
         schedule.run_pending()
         time.sleep(60)
 
+@app.route('/test-connection')
+def test_connection():
+    connection_status = {
+        "database_connection": False,
+        "tables_accessible": False,
+        "sample_data": None,
+        "error": None
+    }
+    
+    try:
+        # Test basic connection
+        with db.engine.connect() as connection:
+            result = connection.execute(text("SELECT 1"))
+            connection_status["database_connection"] = True
+            
+            # Check if we can access the tables
+            tables_query = text("""
+                SELECT table_name 
+                FROM information_schema.tables 
+                WHERE table_schema = 'public'
+                LIMIT 5
+            """)
+            tables_result = connection.execute(tables_query)
+            tables = [row[0] for row in tables_result]
+            connection_status["tables_accessible"] = True
+            connection_status["available_tables"] = tables
+            
+            # Try to get one patient without date restriction
+            sample_query = text("""
+                SELECT 
+                    pat.last_name || ' ' || pat.first_name AS patient_name,
+                    pat.id AS mrn,
+                    exa.date AS exam_date
+                FROM patients AS pat
+                LEFT JOIN examinations AS exa ON pat.uid = exa.parent_uid
+                LIMIT 1
+            """)
+            
+            sample_result = connection.execute(sample_query)
+            sample_data = [dict(row) for row in sample_result]
+            
+            if sample_data:
+                connection_status["sample_data"] = sample_data
+                
+                # Try with date restriction to see if today has records
+                today_query = text("""
+                    SELECT COUNT(*) 
+                    FROM examinations 
+                    WHERE date = CURRENT_DATE
+                """)
+                today_result = connection.execute(today_query)
+                today_count = today_result.scalar()
+                
+                connection_status["today_records_count"] = today_count
+                connection_status["current_date"] = datetime.now().date().isoformat()
+            
+    except Exception as e:
+        connection_status["error"] = str(e)
+    
+    return jsonify(connection_status)
+
 if __name__ == '__main__':
     # Verify database connection
     try:
