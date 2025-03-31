@@ -20,18 +20,10 @@
             border-left: 5px solid #3498db;
             transition: all 0.3s ease;
         }
-        .patient-card.status-mri {
-            border-left-color: #3498db;
-        }
-        .patient-card.status-planning {
-            border-left-color: #f39c12;
-        }
-        .patient-card.status-treatment {
-            border-left-color: #2ecc71;
-        }
-        .patient-card.status-waiting {
-            border-left-color: #95a5a6;
-        }
+        .patient-card.status-mri { border-left-color: #3498db; }
+        .patient-card.status-planning { border-left-color: #f39c12; }
+        .patient-card.status-treatment { border-left-color: #2ecc71; }
+        .patient-card.status-waiting { border-left-color: #95a5a6; }
         .patient-header {
             display: flex;
             justify-content: space-between;
@@ -49,64 +41,36 @@
             gap: 10px;
             margin-bottom: 15px;
         }
-        .info-group {
-            margin-bottom: 5px;
-        }
-        .info-label {
+        .info-group .info-label {
             font-weight: bold;
-            color: #555;
             font-size: 0.9rem;
+            color: #555;
         }
         .info-value {
             font-size: 1rem;
         }
-        .treatment-info {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            background-color: #f9f9f9;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .dashboard-title {
-            margin-bottom: 20px;
-            color: #2c3e50;
-            border-bottom: 2px solid #3498db;
-            padding-bottom: 10px;
-        }
         .status-badge {
             padding: 5px 10px;
             border-radius: 20px;
-            font-size: 0.8rem;
             font-weight: bold;
+            font-size: 0.8rem;
+            color: white;
             text-align: center;
         }
-        .status-mri {
+        .status-waiting { background-color: #95a5a6; }
+        .status-mri { background-color: #3498db; }
+        .status-planning { background-color: #f39c12; }
+        .status-treatment { background-color: #2ecc71; }
+        .filter-buttons button {
+            margin-right: 10px;
+            font-weight: bold;
+            padding: 10px 15px;
+            border-radius: 20px;
+        }
+        .filter-buttons button.active {
             background-color: #3498db;
             color: white;
-        }
-        .status-planning {
-            background-color: #f39c12;
-            color: white;
-        }
-        .status-treatment {
-            background-color: #2ecc71;
-            color: white;
-        }
-        .status-waiting {
-            background-color: #95a5a6;
-            color: white;
-        }
-        .time-info {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-            padding-top: 10px;
-            border-top: 1px dashed #eee;
-        }
-        select.form-select {
-            max-width: 200px;
+            border-color: #3498db;
         }
         .refresh-section {
             display: flex;
@@ -207,432 +171,152 @@
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="refresh-section">
-            <h1 class="dashboard-title">Today's Patient Dashboard</h1>
-            <div>
-                <span class="dashboard-count" id="patient-count">0 Patients</span>
-                <button id="refresh-btn" class="btn btn-primary ms-2">Refresh Data</button>
+
+<div class="container-fluid">
+    <h2 class="text-center my-4" id="page-title">Today's Patient Overview</h2>
+    <button id="refresh-btn" class="btn btn-primary ms-2">Refresh Data</button>
+
+    <!-- Patient Preview Table -->
+    <table class="table table-striped patient-preview-table" id="patient-preview-table">
+        <thead>
+            <tr>
+                <th>Patient Name</th>
+                <th>MRN</th>
+                <th>Status</th>
+                <th>Start Time</th>
+                <th>End Time</th>
+                <th>Diagnosis</th>
+            </tr>
+        </thead>
+        <tbody id="patient-preview-body">
+            <tr>
+                <td colspan="6" class="text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Fetching patient data...</p>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Status Filter Section -->
+    <div class="status-section">
+        <div class="status-counter">
+            <div class="status-counter-item waiting-counter">
+                <div class="counter-number" id="waiting-count">0</div>
+                <div class="counter-title">Waiting</div>
+            </div>
+            <div class="status-counter-item mri-counter">
+                <div class="counter-number" id="mri-count">0</div>
+                <div class="counter-title">MRI</div>
+            </div>
+            <div class="status-counter-item planning-counter">
+                <div class="counter-number" id="planning-count">0</div>
+                <div class="counter-title">Planning</div>
+            </div>
+            <div class="status-counter-item treatment-counter">
+                <div class="counter-number" id="treatment-count">0</div>
+                <div class="counter-title">Treatment</div>
             </div>
         </div>
 
-        <!-- New Status Section -->
-        <div class="status-section">
-            <div class="status-counter">
-                <div class="status-counter-item waiting-counter">
-                    <div class="counter-number" id="waiting-count">0</div>
-                    <div class="counter-title">Waiting</div>
-                </div>
-                <div class="status-counter-item mri-counter">
-                    <div class="counter-number" id="mri-count">0</div>
-                    <div class="counter-title">MRI</div>
-                </div>
-                <div class="status-counter-item planning-counter">
-                    <div class="counter-number" id="planning-count">0</div>
-                    <div class="counter-title">Planning</div>
-                </div>
-                <div class="status-counter-item treatment-counter">
-                    <div class="counter-number" id="treatment-count">0</div>
-                    <div class="counter-title">Treatment</div>
-                </div>
-            </div>
-
-            <div class="status-tabs">
-                <div class="status-tab active" data-filter="all">All Patients</div>
-                <div class="status-tab" data-filter="waiting">Waiting</div>
-                <div class="status-tab" data-filter="mri">MRI</div>
-                <div class="status-tab" data-filter="planning">Planning</div>
-                <div class="status-tab" data-filter="treatment">Treatment</div>
-            </div>
-        </div>
-
-        <div id="patients-container" class="row">
-            <!-- Patient cards will be inserted here -->
-            <div class="col-12 empty-state" id="empty-state">
-                <h3>No patients scheduled for today</h3>
-                <p class="text-muted">Patient information will appear here when scheduled</p>
-            </div>
+        <div class="status-tabs">
+            <div class="status-tab active" data-filter="all">All Patients</div>
+            <div class="status-tab" data-filter="waiting">Waiting</div>
+            <div class="status-tab" data-filter="mri">MRI</div>
+            <div class="status-tab" data-filter="planning">Planning</div>
+            <div class="status-tab" data-filter="treatment">Treatment</div>
         </div>
     </div>
+    
+    <!-- Patient Cards Section -->
+    <div id="patients-container" class="row">
+        <!-- Patient cards will be inserted here -->
+        <div class="col-12 empty-state" id="empty-state">
+            <h3>No patients scheduled for today</h3>
+            <p class="text-muted">Patient information will appear here when scheduled</p>
+        </div>
+    </div>
+</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // Sample data for testing (replace with your actual data source)
-        const sampleData = [
-            {
-                MRN: "MRN12345",
-                L_Name: "Smith",
-                F_Name: "John",
-                Age: 45,
-                Sex: "M",
-                _Pre: 2,
-                ExamDate: "2025-02-28",
-                Diag: "Meningioma",
-                State: "Active",
-                Plan: "Single Session",
-                Tx_: 1,
-                Fixation: "Frame",
-                D_Gy_: 12,
-                D___: 50,
-                _Tar: 1,
-                _Shot: 8,
-                G: 0.95,
-                Status: "Waiting",
-                Start_Time: "2025-02-28T09:00:00",
-                End_Time: "2025-02-28T10:30:00",
-                Time_Diff: 90
-            },
-            {
-                MRN: "MRN23456",
-                L_Name: "Johnson",
-                F_Name: "Mary",
-                Age: 62,
-                Sex: "F",
-                _Pre: 1,
-                ExamDate: "2025-02-28",
-                Diag: "Acoustic Neuroma",
-                State: "Active",
-                Plan: "Single Session",
-                Tx_: 1,
-                Fixation: "Mask",
-                D_Gy_: 14,
-                D___: 55,
-                _Tar: 1,
-                _Shot: 12,
-                G: 0.97,
-                Status: "MRI",
-                Start_Time: "2025-02-28T11:00:00",
-                End_Time: "2025-02-28T12:45:00",
-                Time_Diff: 105
-            },
-            {
-                MRN: "MRN34567",
-                L_Name: "Williams",
-                F_Name: "Robert",
-                Age: 55,
-                Sex: "M",
-                _Pre: 0,
-                ExamDate: "2025-02-28",
-                Diag: "AVM",
-                State: "Active",
-                Plan: "Staged",
-                Tx_: 2,
-                Fixation: "Frame",
-                D_Gy_: 16,
-                D___: 60,
-                _Tar: 2,
-                _Shot: 15,
-                G: 0.92,
-                Status: "Planning",
-                Start_Time: "2025-02-28T13:30:00",
-                End_Time: "2025-02-28T15:15:00",
-                Time_Diff: 105
-            },
-            {
-                MRN: "MRN45678",
-                L_Name: "Garcia",
-                F_Name: "Sofia",
-                Age: 37,
-                Sex: "F",
-                _Pre: 1,
-                ExamDate: "2025-02-28",
-                Diag: "Brain Metastasis",
-                State: "Active",
-                Plan: "Multi-target",
-                Tx_: 1,
-                Fixation: "Mask",
-                D_Gy_: 18,
-                D___: 70,
-                _Tar: 4,
-                _Shot: 20,
-                G: 0.96,
-                Status: "Treatment",
-                Start_Time: "2025-02-28T08:30:00",
-                End_Time: "2025-02-28T10:45:00",
-                Time_Diff: 135
-            }
-        ];
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script>
+    
+    function formatTime(timeString) {
+        if (!timeString) return 'N/A';
+        const date = new Date(timeString);
+        return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    }
 
-        // Group patients by MRN to handle multiple entries per patient
-        function groupPatientsByMRN(patients) {
-            const groupedPatients = {};
-            
-            patients.forEach(patient => {
-                const mrn = patient.MRN;
-                if (!groupedPatients[mrn]) {
-                    groupedPatients[mrn] = {
-                        ...patient,
-                        examinations: []
-                    };
-                }
-                
-                groupedPatients[mrn].examinations.push({
-                    diagnosis: patient.Diag,
-                    examDate: patient.ExamDate,
-                    state: patient.State,
-                    plan: patient.Plan,
-                    txNumber: patient.Tx_,
-                    fixation: patient.Fixation,
-                    dose: patient.D_Gy_,
-                    isodose: patient.D___,
-                    targetCount: patient._Tar,
-                    shotCount: patient._Shot,
-                    gamma: patient.G,
-                    status: patient.Status || 'Waiting',
-                    startTime: patient.Start_Time,
-                    endTime: patient.End_Time,
-                    timeDiff: patient.Time_Diff
-                });
-            });
-            
-            return Object.values(groupedPatients);
+    function loadPatients() {
+        $('#patient-preview-body').empty();
+        $('#patients-container').empty();
+        if (fakePatients.length > 0) {
+            $('#empty-state').hide();
+        } else {
+            $('#empty-state').show();
         }
 
-        // Format the time values
-        function formatTime(timeString) {
-            if (!timeString) return 'N/A';
-            
-            const date = new Date(timeString);
-            return date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        }
+        fakePatients.forEach(patient => {
+            // Table Row
+            const row = `
+                <tr>
+                    <td>${patient.Patient_Name}</td>
+                    <td>${patient.MRN}</td>
+                    <td><span class="badge status-${patient.Status.toLowerCase()}">${patient.Status}</span></td>
+                    <td>${formatTime(patient.Start_Time)}</td>
+                    <td>${formatTime(patient.End_Time)}</td>
+                    <td>${patient.Diagnosis}</td>
+                </tr>`;
+            $('#patient-preview-body').append(row);
 
-        // Format duration in minutes to hours and minutes
-        function formatDuration(minutes) {
-            if (!minutes) return 'N/A';
-            
-            const hours = Math.floor(minutes / 60);
-            const mins = Math.round(minutes % 60);
-            
-            if (hours > 0) {
-                return `${hours}h ${mins}m`;
-            } else {
-                return `${mins}m`;
-            }
-        }
-
-        // Update the status of a patient
-        function updatePatientStatus(mrn, newStatus) {
-            // Here you would typically send an API request to update the database
-            // For demonstration, we'll just update the UI
-            console.log(`Updated patient ${mrn} status to ${newStatus}`);
-            
-            // Update the patient card's status class
-            const patientCard = $(`#patient-card-${mrn}`);
-            patientCard.removeClass('status-mri status-planning status-treatment status-waiting');
-            patientCard.addClass(`status-${newStatus.toLowerCase()}`);
-            
-            // Update status badge
-            const statusBadge = $(`#status-badge-${mrn}`);
-            statusBadge.removeClass('status-mri status-planning status-treatment status-waiting');
-            statusBadge.addClass(`status-${newStatus.toLowerCase()}`).text(newStatus);
-            
-            // Update counter values
-            updateStatusCounts();
-        }
-
-        // Update status counters
-        function updateStatusCounts() {
-            let waitingCount = 0;
-            let mriCount = 0;
-            let planningCount = 0;
-            let treatmentCount = 0;
-            
-            $('.patient-card').each(function() {
-                const status = $(this).data('status').toLowerCase();
-                
-                if (status === 'waiting') waitingCount++;
-                else if (status === 'mri') mriCount++;
-                else if (status === 'planning') planningCount++;
-                else if (status === 'treatment') treatmentCount++;
-            });
-            
-            $('#waiting-count').text(waitingCount);
-            $('#mri-count').text(mriCount);
-            $('#planning-count').text(planningCount);
-            $('#treatment-count').text(treatmentCount);
-        }
-
-        // Fetch and display patient data
-        function fetchPatients() {
-            // In a real application, you would fetch data from your server
-            // For this demo, we'll use the sample data
-            const groupedPatients = groupPatientsByMRN(sampleData);
-            displayPatients(groupedPatients);
-            
-            // You can uncomment the following when connecting to a real API
-            /*
-            $.ajax({
-                url: '/patients',
-                method: 'GET',
-                success: function(data) {
-                    const groupedPatients = groupPatientsByMRN(data);
-                    displayPatients(groupedPatients);
-                },
-                error: function(error) {
-                    console.error('Error fetching patient data:', error);
-                    $('#patients-container').html(`
-                        <div class="col-12">
-                            <div class="alert alert-danger">
-                                Failed to load patient data. Please try again later.
-                            </div>
-                        </div>
-                    `);
-                }
-            });
-            */
-        }
-
-        // Display patients in the UI
-        function displayPatients(patients) {
-            const container = $('#patients-container');
-            container.empty();
-            
-            // Update patient count
-            $('#patient-count').text(`${patients.length} Patient${patients.length !== 1 ? 's' : ''}`);
-            
-            // Show empty state if no patients
-            if (patients.length === 0) {
-                $('#empty-state').show();
-                return;
-            } else {
-                $('#empty-state').hide();
-            }
-            
-            // Display patients
-            patients.forEach(patient => {
-                const status = patient.Status || 'Waiting';
-                const patientCard = $(`
-                    <div class="col-md-6">
-                        <div id="patient-card-${patient.MRN}" class="patient-card status-${status.toLowerCase()}" data-status="${status.toLowerCase()}">
-                            <div class="patient-header">
-                                <div class="patient-name">${patient.L_Name}, ${patient.F_Name}</div>
-                                <div class="status-select-container">
-                                    <div class="status-select-label">Status:</div>
-                                    <select class="form-select form-select-sm status-select" 
-                                            data-mrn="${patient.MRN}" 
-                                            aria-label="Patient status">
-                                        <option value="Waiting" ${status === 'Waiting' ? 'selected' : ''}>Waiting</option>
-                                        <option value="MRI" ${status === 'MRI' ? 'selected' : ''}>MRI</option>
-                                        <option value="Planning" ${status === 'Planning' ? 'selected' : ''}>Planning</option>
-                                        <option value="Treatment" ${status === 'Treatment' ? 'selected' : ''}>Treatment</option>
-                                    </select>
-                                </div>
-                            </div>
-                            
-                            <div class="patient-info">
-                                <div class="info-group">
-                                    <div class="info-label">MRN</div>
-                                    <div class="info-value">${patient.MRN}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Age</div>
-                                    <div class="info-value">${patient.Age} (${patient.Sex})</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Previous Exams</div>
-                                    <div class="info-value">${patient._Pre || 0}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Current Status</div>
-                                    <div class="info-value">
-                                        <span id="status-badge-${patient.MRN}" class="status-badge status-${status.toLowerCase()}">
-                                            ${status}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Diagnosis</div>
-                                    <div class="info-value">${patient.Diag || 'N/A'}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Treatment #</div>
-                                    <div class="info-value">${patient.Tx_ || 'N/A'}</div>
-                                </div>
-                            </div>
-                            
-                            <div class="treatment-info">
-                                <div class="info-group">
-                                    <div class="info-label">Plan</div>
-                                    <div class="info-value">${patient.Plan || 'N/A'}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Fixation</div>
-                                    <div class="info-value">${patient.Fixation || 'N/A'}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Dose</div>
-                                    <div class="info-value">${patient.D_Gy_ || 'N/A'} Gy (${patient.D___ || 'N/A'}%)</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Targets/Shots</div>
-                                    <div class="info-value">${patient._Tar || '0'}/${patient._Shot || '0'}</div>
-                                </div>
-                            </div>
-                            
-                            <div class="time-info">
-                                <div class="info-group">
-                                    <div class="info-label">Start Time</div>
-                                    <div class="info-value">${formatTime(patient.Start_Time)}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">End Time</div>
-                                    <div class="info-value">${formatTime(patient.End_Time)}</div>
-                                </div>
-                                <div class="info-group">
-                                    <div class="info-label">Total Time</div>
-                                    <div class="info-value">${formatDuration(patient.Time_Diff)}</div>
-                                </div>
-                            </div>
-                        </div>
+            // Detailed Card
+            const card = `
+                <div class="col-md-6 patient-card-container" data-status="${patient.Status.toLowerCase()}">
+                    <div class="patient-card card-status-${patient.Status.toLowerCase()}">
+                        <h5>${patient.Patient_Name}</h5>
+                        <p><strong>MRN:</strong> ${patient.MRN}</p>
+                        <p><strong>Status:</strong> ${patient.Status}</p>
+                        <p><strong>Diagnosis:</strong> ${patient.Diagnosis}</p>
+                        <p><strong>Start Time:</strong> ${formatTime(patient.Start_Time)}</p>
+                        <p><strong>End Time:</strong> ${formatTime(patient.End_Time)}</p>
+                        <p><strong>Age:</strong> ${patient.Age} (${patient.Sex})</p>
+                        <p><strong>Plan:</strong> ${patient.Plan}</p>
+                        <p><strong>Fixation:</strong> ${patient.Fixation}</p>
+                        <p><strong>Dose:</strong> ${patient.Dose}</p>
+                        <p><strong>Targets:</strong> ${patient.Targets}</p>
+                        <p><strong>Shots:</strong> ${patient.Shots}</p>
+                        <p><strong>Gamma Index:</strong> ${patient.Gamma}</p>
                     </div>
-                `);
-                
-                container.append(patientCard);
-            });
-            
-            // Update status counts
-            updateStatusCounts();
-            
-            // Add event listener for status changes
-            $('.status-select').change(function() {
-                const mrn = $(this).data('mrn');
-                const newStatus = $(this).val();
-                updatePatientStatus(mrn, newStatus);
-            });
-        }
-
-        // Filter patients by status
-        function filterPatients(status) {
-            if (status === 'all') {
-                $('.patient-card').parent().show();
-            } else {
-                $('.patient-card').parent().hide();
-                $(`.patient-card[data-status="${status}"]`).parent().show();
-            }
-        }
-
-        // Initialize the dashboard
-        $(document).ready(function() {
-            fetchPatients();
-            
-            // Set up refresh button
-            $('#refresh-btn').click(function() {
-                fetchPatients();
-            });
-            
-            // Set up status tabs
-            $('.status-tab').click(function() {
-                $('.status-tab').removeClass('active');
-                $(this).addClass('active');
-                
-                const filter = $(this).data('filter');
-                filterPatients(filter);
-            });
-            
-            // Auto-refresh every 5 minutes
-            setInterval(fetchPatients, 5 * 60 * 1000);
+                </div>`;
+            $('#patient-cards-container').append(card);
         });
-    </script>
+    }
+
+    function updateTitleWithDate() {
+        const today = new Date();
+        const formattedDate = today.toLocaleDateString('en-US', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+        });
+        $('#page-title').text(`Today's Patient Overview - ${formattedDate}`);
+        document.title = `Hospital Patient Dashboard - ${formattedDate}`;
+    }
+
+    $('.filter-btn').click(function() {
+        const status = $(this).data('status');
+        if (status === 'all') {
+            $('.patient-card-container').show();
+        } else {
+            $('.patient-card-container').hide();
+            $(`.patient-card-container[data-status="${status}"]`).show();
+        }
+    });
+
+    $(document).ready(function() {
+        updateTitleWithDate();
+        loadPatients();
+    });
+</script>
 </body>
 </html>
