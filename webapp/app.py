@@ -1,7 +1,7 @@
 from flask import Flask, render_template, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from datetime import datetime
+from datetime import datetime, date
 import schedule
 import time
 import threading
@@ -26,108 +26,71 @@ db = SQLAlchemy(app)
 
 def fetch_patient_data(date_param=None):
     try:
-        # Use provided date or current date dynamically
-        current_date = datetime.now().date()
+        # Use today's date by default
+        query_date = datetime.now().date()
         if date_param:
             try:
-                selected_date = datetime.strptime(date_param, '%Y-%m-%d').date()
-                date_condition = f"exa.date = '{selected_date}'"
-                logger.info(f"Fetching patients for specific date: {selected_date}")
+                query_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             except ValueError:
                 logger.error(f"Invalid date format: {date_param}")
-                date_condition = ""  # Will fetch all records if date is invalid
-        else:
-            # Use no date restriction initially to ensure we get data
-            date_condition = ""
-        
-        # Build query based on date condition
+                query_date = datetime.now().date()
+
+        logger.info(f"Executing query for date: {query_date}")
+
+        # Simplified query with only existing columns
         query_str = """
-            SELECT DISTINCT
-                pat.last_name || ' ' || pat.first_name AS "Patient_Name",
-                pat.id AS "MRN",
+            SELECT 
+                pat.last_name || ' ' || pat.first_name AS patient_name,
+                pat.id AS mrn,
                 CASE
                     WHEN tre.state IS NULL THEN 'Waiting'
                     WHEN tre.state = 2 THEN 'Treatment'
                     WHEN tre.state = 5 THEN 'Planning'
                     WHEN tre.state = 3 THEN 'MRI'
                     ELSE 'Other'
-                END AS "Status",
-                tre.start_time AS "Start_Time",
-                tre.end_time AS "End_Time",
-                exa.diagnosis_name AS "Diagnosis",
-                pat.age AS "Age",
-                pat.sex AS "Sex",
-                tre.plan_name AS "Plan",
-                tre.fixation_type AS "Fixation",
-                tre.prescribed_dose AS "Dose",
-                tre.target_count AS "Targets",
-                tre.shot_count AS "Shots",
-                tre.gamma_index AS "Gamma",
-                exa.date AS "Exam_Date"
-            FROM patients AS pat
-            LEFT JOIN examinations AS exa ON pat.uid = exa.parent_uid
-            LEFT JOIN treatment_plans AS tre ON exa.uid = tre.root_uid
-        """
-        
-        # Add WHERE clause if we have a date condition
-        if date_condition:
-            query_str += f" WHERE {date_condition}"
-            
-        # Add ORDER BY and LIMIT
-        query_str += """
-            ORDER BY tre.start_time NULLS LAST, pat.last_name, pat.first_name
+                END AS status,
+                exa.diagnosis_name AS diagnosis,
+                exa.date AS exam_date
+            FROM patients pat
+            JOIN examinations exa ON pat.uid = exa.parent_uid
+            LEFT JOIN treatment_plans tre ON exa.uid = tre.root_uid
+            WHERE exa.date = :query_date
+            ORDER BY 
+                pat.last_name,
+                pat.first_name
             LIMIT 50
         """
-        
-        query = text(query_str)
-        
+
         with db.engine.connect() as connection:
-            result = connection.execute(query)
-            patients = [dict(row) for row in result]
+            result = connection.execute(text(query_str), {"query_date": query_date})
+            patients = []
             
-            # Convert datetime objects to strings for JSON serialization
-            for patient in patients:
-                if patient.get("Start_Time"):
-                    patient["Start_Time"] = patient["Start_Time"].isoformat()
-                if patient.get("End_Time"):
-                    patient["End_Time"] = patient["End_Time"].isoformat()
-                if patient.get("Exam_Date"):
-                    patient["Exam_Date"] = patient["Exam_Date"].isoformat()
-                
-                # Ensure all expected fields exist (even as null)
-                for field in ["Patient_Name", "MRN", "Status", "Diagnosis", "Age", "Sex", 
-                              "Plan", "Fixation", "Dose", "Targets", "Shots", "Gamma"]:
-                    if field not in patient or patient[field] is None:
-                        patient[field] = "N/A"
-        
-        # If we got no results with no date filter, try with today's date as fallback
-        if not patients and not date_condition:
-            logger.info("No patients found with no date filter, trying today's date")
-            today_query = text(query_str.replace("LEFT JOIN examinations", 
-                                               f"LEFT JOIN examinations WHERE exa.date = '{current_date}'"))
-            with db.engine.connect() as connection:
-                result = connection.execute(today_query)
-                patients = [dict(row) for row in result]
-                
-                # Process datetime objects as before
-                for patient in patients:
-                    if patient.get("Start_Time"):
-                        patient["Start_Time"] = patient["Start_Time"].isoformat()
-                    if patient.get("End_Time"):
-                        patient["End_Time"] = patient["End_Time"].isoformat()
-                    if patient.get("Exam_Date"):
-                        patient["Exam_Date"] = patient["Exam_Date"].isoformat()
-                    
-                    # Ensure all expected fields exist
-                    for field in ["Patient_Name", "MRN", "Status", "Diagnosis", "Age", "Sex", 
-                                  "Plan", "Fixation", "Dose", "Targets", "Shots", "Gamma"]:
-                        if field not in patient or patient[field] is None:
-                            patient[field] = "N/A"
-        
-        logger.info(f"Fetched {len(patients)} patients")
-        return patients
+            for row in result:
+                patient = {
+                    "Patient_Name": row.patient_name,
+                    "MRN": row.mrn,
+                    "Status": row.status,
+                    "Diagnosis": row.diagnosis if row.diagnosis else "N/A",
+                    "Exam_Date": row.exam_date.isoformat(),
+                    # These fields are not available in the database
+                    "Start_Time": None,
+                    "End_Time": None,
+                    "Age": "N/A",
+                    "Sex": "N/A",
+                    "Plan": "N/A",
+                    "Fixation": "N/A",
+                    "Dose": "N/A",
+                    "Targets": "N/A",
+                    "Shots": "N/A",
+                    "Gamma": "N/A"
+                }
+                patients.append(patient)
+
+            logger.info(f"Fetched {len(patients)} patients for date {query_date}")
+            return patients
+
     except Exception as e:
-        logger.error(f"Error fetching patient data: {e}")
+        logger.error(f"Error fetching patient data: {str(e)}", exc_info=True)
         return []
 
 @app.route('/patients')
@@ -140,99 +103,140 @@ def get_patients():
 def check_dates():
     try:
         with db.engine.connect() as connection:
-            # Check database date
-            db_date_query = text("SELECT CURRENT_DATE AS db_date")
-            db_date = connection.execute(db_date_query).scalar()
-            
-            # Check available examination dates
+            # Get available examination dates
             exam_dates_query = text("""
                 SELECT DISTINCT date 
                 FROM examinations 
                 ORDER BY date DESC 
                 LIMIT 10
             """)
-            exam_dates = [row[0] for row in connection.execute(exam_dates_query)]
+            exam_dates_result = connection.execute(exam_dates_query)
+            exam_dates = [row.date for row in exam_dates_result]
             
             return jsonify({
-                "database_date": str(db_date),
-                "python_date": str(datetime.now().date()),
-                "available_exam_dates": [str(d) for d in exam_dates],
-                "python_version": datetime.now().strftime("%Y-%m-%d")
+                "available_exam_dates": [d.isoformat() for d in exam_dates],
+                "current_date": datetime.now().date().isoformat()
             })
     except Exception as e:
+        logger.error(f"Error checking dates: {e}")
         return jsonify({"error": str(e)})
 
 @app.route('/')
 def dashboard():
     return render_template('index.html')
 
-def auto_update():
-    # Fetch data periodically
-    schedule.every(15).minutes.do(fetch_patient_data)
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
 
-@app.route('/test-connection')
-def test_connection():
-    connection_status = {
-        "database_connection": False,
-        "tables_accessible": False,
-        "sample_data": None,
-        "error": None
-    }
-    
+@app.route('/debug-columns')
+def debug_columns():
     try:
-        # Test basic connection
         with db.engine.connect() as connection:
-            result = connection.execute(text("SELECT 1"))
-            connection_status["database_connection"] = True
-            
-            # Check if we can access the tables
-            tables_query = text("""
-                SELECT table_name 
-                FROM information_schema.tables 
-                WHERE table_schema = 'public'
-                LIMIT 5
-            """)
-            tables_result = connection.execute(tables_query)
-            tables = [row[0] for row in tables_result]
-            connection_status["tables_accessible"] = True
-            connection_status["available_tables"] = tables
-            
-            # Try to get one patient without date restriction
-            sample_query = text("""
+            # Get columns for all relevant tables
+            query = text("""
                 SELECT 
-                    pat.last_name || ' ' || pat.first_name AS patient_name,
-                    pat.id AS mrn,
-                    exa.date AS exam_date
-                FROM patients AS pat
-                LEFT JOIN examinations AS exa ON pat.uid = exa.parent_uid
-                LIMIT 1
+                    table_name, 
+                    column_name,
+                    data_type
+                FROM 
+                    information_schema.columns
+                WHERE 
+                    table_name IN ('patients', 'examinations', 'treatment_plans')
+                ORDER BY 
+                    table_name, 
+                    ordinal_position
+            """)
+            results = connection.execute(query)
+            
+            return jsonify({
+                "columns": [
+                    {"table": row.table_name, "column": row.column_name, "type": row.data_type}
+                    for row in results
+                ]
+            })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+@app.route('/debug-tables')
+def debug_tables():
+    try:
+        with db.engine.connect() as connection:
+            # Get all tables and their columns that might contain time information
+            query = text("""
+                SELECT 
+                    t.table_name, 
+                    c.column_name,
+                    c.data_type
+                FROM 
+                    information_schema.tables t
+                JOIN 
+                    information_schema.columns c 
+                    ON t.table_name = c.table_name
+                WHERE 
+                    t.table_schema = 'public'
+                    AND c.column_name LIKE '%time%'
+                ORDER BY 
+                    t.table_name, 
+                    c.column_name
+            """)
+            results = connection.execute(query)
+            
+            return jsonify({
+                "time_columns": [
+                    {"table": row.table_name, "column": row.column_name, "type": row.data_type}
+                    for row in results
+                ]
+            })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+    
+@app.route('/debug-joins')
+def debug_joins():
+    try:
+        with db.engine.connect() as connection:
+            # Check examination-patient relationships
+            exam_patient_query = text("""
+                SELECT 
+                    e.date,
+                    COUNT(DISTINCT e.uid) as exam_count,
+                    COUNT(DISTINCT p.uid) as patient_count,
+                    COUNT(DISTINCT CASE WHEN p.uid IS NOT NULL THEN e.uid END) as matched_count
+                FROM examinations e
+                LEFT JOIN patients p ON e.parent_uid = p.uid
+                GROUP BY e.date
+                ORDER BY e.date DESC
+                LIMIT 10
             """)
             
-            sample_result = connection.execute(sample_query)
-            sample_data = [dict(row) for row in sample_result]
+            join_stats = connection.execute(exam_patient_query).fetchall()
             
-            if sample_data:
-                connection_status["sample_data"] = sample_data
-                
-                # Try with date restriction to see if today has records
-                today_query = text("""
-                    SELECT COUNT(*) 
-                    FROM examinations 
-                    WHERE date = CURRENT_DATE
-                """)
-                today_result = connection.execute(today_query)
-                today_count = today_result.scalar()
-                
-                connection_status["today_records_count"] = today_count
-                connection_status["current_date"] = datetime.now().date().isoformat()
+            # Check treatment plan relationships
+            treatment_plan_query = text("""
+                SELECT 
+                    COUNT(*) as total_plans,
+                    COUNT(DISTINCT root_uid) as distinct_exams,
+                    COUNT(DISTINCT CASE WHEN root_uid IN (SELECT uid FROM examinations) THEN root_uid END) as matched_exams
+                FROM treatment_plans
+            """)
+            
+            plan_stats = connection.execute(treatment_plan_query).fetchone()
+            
+            return jsonify({
+                "examination_patient_stats": [
+                    {
+                        "date": row.date.isoformat(),
+                        "exam_count": row.exam_count,
+                        "patient_count": row.patient_count,
+                        "matched_count": row.matched_count
+                    } for row in join_stats
+                ],
+                "treatment_plan_stats": {
+                    "total_plans": plan_stats.total_plans,
+                    "distinct_exams": plan_stats.distinct_exams,
+                    "matched_exams": plan_stats.matched_exams
+                }
+            })
             
     except Exception as e:
-        connection_status["error"] = str(e)
-    
-    return jsonify(connection_status)
+        return jsonify({"error": str(e)})
 
 if __name__ == '__main__':
     # Verify database connection
@@ -242,9 +246,6 @@ if __name__ == '__main__':
             logger.info("Database connection successful")
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
-    
-    # Start the background thread for auto-update
-    threading.Thread(target=auto_update, daemon=True).start()
     
     # Run the Flask app
     app.run(host='0.0.0.0', port=5000, debug=True)
