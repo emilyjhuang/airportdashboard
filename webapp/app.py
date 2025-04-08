@@ -125,35 +125,64 @@ def check_dates():
 def dashboard():
     return render_template('index.html')
 
-
-@app.route('/debug-columns')
-def debug_columns():
+@app.route('/update-patient-status', methods=['POST'])
+def update_patient_status():
     try:
-        with db.engine.connect() as connection:
-            # Get columns for all relevant tables
-            query = text("""
-                SELECT 
-                    table_name, 
-                    column_name,
-                    data_type
-                FROM 
-                    information_schema.columns
-                WHERE 
-                    table_name IN ('patients', 'examinations', 'treatment_plans')
-                ORDER BY 
-                    table_name, 
-                    ordinal_position
-            """)
-            results = connection.execute(query)
+        data = request.json
+        patient_id = data.get('mrn')
+        new_status = data.get('status')
+        
+        # Map status text to the numeric codes in your database
+        status_map = {
+            'Waiting': None,
+            'Treatment': 2,
+            'Planning': 5,
+            'MRI': 3,
+            'Other': 0
+        }
+        
+        # If the status isn't in our map, return an error
+        if new_status not in status_map:
+            return jsonify({"success": False, "message": "Invalid status"}), 400
             
-            return jsonify({
-                "columns": [
-                    {"table": row.table_name, "column": row.column_name, "type": row.data_type}
-                    for row in results
-                ]
-            })
+        db_status = status_map[new_status]
+        
+        # Update the treatment plan state in the database
+        with db.engine.connect() as connection:
+            # First, find the treatment plan associated with this patient
+            find_query = text("""
+                SELECT tre.id
+                FROM patients pat
+                JOIN examinations exa ON pat.uid = exa.parent_uid
+                JOIN treatment_plans tre ON exa.uid = tre.root_uid
+                WHERE pat.id = :mrn
+                LIMIT 1
+            """)
+            
+            result = connection.execute(find_query, {"mrn": patient_id}).fetchone()
+            
+            if result:
+                treatment_id = result[0]
+                # Update the status
+                update_query = text("""
+                    UPDATE treatment_plans
+                    SET state = :state
+                    WHERE id = :id
+                """)
+                
+                connection.execute(update_query, {"state": db_status, "id": treatment_id})
+                connection.commit()
+                
+                return jsonify({"success": True, "message": f"Patient status updated to {new_status}"})
+            else:
+                return jsonify({"success": False, "message": "Patient or treatment plan not found"}), 404
+                
     except Exception as e:
-        return jsonify({"error": str(e)})
+        logger.error(f"Error updating patient status: {str(e)}", exc_info=True)
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+
 
 @app.route('/debug-tables')
 def debug_tables():

@@ -65,6 +65,7 @@
                 <th>Start Time</th>
                 <th>End Time</th>
                 <th>Diagnosis</th>
+                <th>Actions</th> 
             </tr>
         </thead>
         <tbody id="patient-preview-body">
@@ -161,6 +162,19 @@
                                 <td>${formatTime(patient.Start_Time)}</td>
                                 <td>${formatTime(patient.End_Time)}</td>
                                 <td>${formatData(patient.Diagnosis)}</td>
+                                <td>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton${patient.MRN}" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Change Status
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="dropdownMenuButton${patient.MRN}">
+                                        <li><a class="dropdown-item status-change" href="#" data-mrn="${patient.MRN}" data-status="Waiting">Waiting</a></li>
+                                        <li><a class="dropdown-item status-change" href="#" data-mrn="${patient.MRN}" data-status="MRI">MRI</a></li>
+                                        <li><a class="dropdown-item status-change" href="#" data-mrn="${patient.MRN}" data-status="Planning">Planning</a></li>
+                                        <li><a class="dropdown-item status-change" href="#" data-mrn="${patient.MRN}" data-status="Treatment">Treatment</a></li>
+                                    </ul>
+                                </div>
+                            </td>
                             </tr>`;
                         $('#patient-preview-body').append(row);
                         
@@ -172,6 +186,31 @@
                                         <div class="patient-name">${patient.Patient_Name}</div>
                                         <span class="status-badge status-${status}">${patient.Status}</span>
                                     </div>
+                                    <!-- Add status control buttons -->
+                                    <div class="status-controls mt-2">
+                                        <label>Change status:</label>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-secondary status-btn ${status === 'waiting' ? 'active' : ''}" 
+                                                    data-mrn="${patient.MRN}" data-status="Waiting">
+                                                Waiting
+                                            </button>
+                                            <button class="btn btn-outline-info status-btn ${status === 'mri' ? 'active' : ''}" 
+                                                    data-mrn="${patient.MRN}" data-status="MRI">
+                                                MRI
+                                            </button>
+                                            <button class="btn btn-outline-warning status-btn ${status === 'planning' ? 'active' : ''}" 
+                                                    data-mrn="${patient.MRN}" data-status="Planning">
+                                                Planning
+                                            </button>
+                                            <button class="btn btn-outline-success status-btn ${status === 'treatment' ? 'active' : ''}" 
+                                                    data-mrn="${patient.MRN}" data-status="Treatment">
+                                                Treatment
+                                            </button>
+                                        </div>
+                                    </div>
+
+
+
                                     <div class="patient-info">
                                         <div class="info-group">
                                             <div class="info-label">MRN</div>
@@ -275,6 +314,97 @@
         // Set up auto-refresh every 5 minutes
         setInterval(loadPatients, 5 * 60 * 1000);
     });
+
+    // Add this to your existing JavaScript
+$(document).ready(function() {
+    // Add Bootstrap JS for dropdowns
+    const bootstrapScript = document.createElement('script');
+    bootstrapScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js';
+    document.head.appendChild(bootstrapScript);
+    
+    // Existing code...
+    
+    // Event handler for status change buttons in cards
+    $(document).on('click', '.status-btn', function() {
+        const mrn = $(this).data('mrn');
+        const newStatus = $(this).data('status');
+        updatePatientStatus(mrn, newStatus);
+    });
+    
+    // Event handler for status change dropdown in table
+    $(document).on('click', '.status-change', function(e) {
+        e.preventDefault();
+        const mrn = $(this).data('mrn');
+        const newStatus = $(this).data('status');
+        updatePatientStatus(mrn, newStatus);
+    });
+});
+
+// Function to update patient status
+function updatePatientStatus(mrn, newStatus) {
+    // Show loading spinner or notification
+    const loadingToast = showToast('Updating patient status...', 'info');
+    
+    $.ajax({
+        url: '/update-patient-status',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ mrn: mrn, status: newStatus }),
+        success: function(response) {
+            if (response.success) {
+                // Show success message
+                showToast(response.message, 'success');
+                // Reload patients to reflect the change
+                loadPatients();
+            } else {
+                // Show error message
+                showToast('Error: ' + response.message, 'danger');
+            }
+        },
+        error: function(xhr) {
+            let errorMsg = 'Failed to update patient status';
+            if (xhr.responseJSON && xhr.responseJSON.message) {
+                errorMsg += ': ' + xhr.responseJSON.message;
+            }
+            showToast(errorMsg, 'danger');
+        }
+    });
+}
+
+    // Add a simple toast notification function
+    function showToast(message, type = 'info') {
+        // Create toast container if it doesn't exist
+        if ($('#toast-container').length === 0) {
+            $('body').append('<div id="toast-container" class="position-fixed bottom-0 end-0 p-3"></div>');
+        }
+        
+        // Create unique ID for the toast
+        const toastId = 'toast-' + Date.now();
+        
+        // Create toast element
+        const toast = `
+            <div id="${toastId}" class="toast align-items-center text-white bg-${type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">
+                        ${message}
+                    </div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>
+        `;
+        
+        // Add toast to container
+        $('#toast-container').append(toast);
+        
+        // Initialize and show the toast
+        const toastElement = new bootstrap.Toast(document.getElementById(toastId), {
+            autohide: true,
+            delay: 3000
+        });
+        toastElement.show();
+        
+        return toastElement;
+    }
 </script>
 </body>
 </html>
