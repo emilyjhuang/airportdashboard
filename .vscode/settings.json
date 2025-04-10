@@ -1,0 +1,14 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "server": "10.132.4.44",
+            "port": 5432,
+            "askForPassword": true,
+            "driver": "PostgreSQL",
+            "name": "GK_Langone",
+            "database": "tpsdb",
+            "username": "guest"
+        }
+    ]
+}

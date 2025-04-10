@@ -1,12 +1,9 @@
 from flask import Flask, render_template, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
-from datetime import datetime, date
-import schedule
-import time
-import threading
-from flask_cors import CORS
+from datetime import datetime
 import logging
+from flask_cors import CORS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -24,65 +21,130 @@ app.secret_key = 'supersecretkey'
 
 db = SQLAlchemy(app)
 
-def fetch_patient_data(date_param=None):
+def fetch_detailed_patient_data(date_param=None):
+    """
+    Execute a detailed SQL query and map its results to dictionaries,
+    including fields such as Age, Sex, Fixation, and Plan.
+    The date_param should be in YYYY-MM-DD format; if not provided,
+    it uses the current date.
+    """
     try:
-        # Use today's date by default
-        query_date = datetime.now().date()
+        # Use today's date by default, and convert date_param if provided
         if date_param:
             try:
                 query_date = datetime.strptime(date_param, '%Y-%m-%d').date()
             except ValueError:
                 logger.error(f"Invalid date format: {date_param}")
                 query_date = datetime.now().date()
+        else:
+            query_date = datetime.now().date()
 
-        logger.info(f"Executing query for date: {query_date}")
+        logger.info(f"Executing detailed query for date: {query_date}")
 
-        # Simplified query with only existing columns
-        query_str = """
-            SELECT 
-                pat.last_name || ' ' || pat.first_name AS patient_name,
-                pat.id AS mrn,
+        sql_query = """
+            SELECT DISTINCT
+                pat.last_name AS "L_Name",
+                pat.first_name AS "F_Name",
+                pat.id AS "MRN",
+                pat.birth_date AS "DoB",
+                To_char(age(CURRENT_DATE, pat.birth_date),'YY') AS "Age",
+                pat.examinations_count - 1 AS "#Pre",
+                CASE pat.gender WHEN '1' THEN 'M' ELSE 'F' END AS "Sex",
+                exa.date AS "ExamDate",
+                exa.diagnosis_name AS "Diagnosis",
                 CASE
                     WHEN tre.state IS NULL THEN 'Waiting'
                     WHEN tre.state = 2 THEN 'Treatment'
                     WHEN tre.state = 5 THEN 'Planning'
                     WHEN tre.state = 3 THEN 'MRI'
                     ELSE 'Other'
-                END AS status,
-                exa.diagnosis_name AS diagnosis,
-                exa.date AS exam_date
-            FROM patients pat
-            JOIN examinations exa ON pat.uid = exa.parent_uid
-            LEFT JOIN treatment_plans tre ON exa.uid = tre.root_uid
+                END AS "State",
+                tre.name AS "Plan",
+                tre.treatment_number as "Tx#",
+                CASE fra.frame_type 
+                    WHEN '2' THEN 'Frame' 
+                    WHEN '4' THEN 'Mask' 
+                    ELSE 'unknow' 
+                END AS "Fixition",
+                ( SELECT count(targets.root_uid) 
+                  FROM targets 
+                  WHERE exa.uid = targets.root_uid) AS "#Tar",
+                ( SELECT count(shots.root_uid) 
+                  FROM shots 
+                  WHERE shots.root_uid = exa.uid AND tar.uid = sho.parent_uid) AS "#sho",
+                sho.gamma AS "G",
+                ( SELECT count(shots.root_uid) 
+                  FROM shots 
+                  WHERE (shots.c_sector_1 = 4 OR shots.c_sector_2 = 4 OR shots.c_sector_3 = 4 OR 
+                         shots.c_sector_4 = 4 OR shots.c_sector_5 = 4 OR shots.c_sector_6 = 4 OR 
+                         shots.c_sector_7 = 4 OR shots.c_sector_8 = 4) 
+                    AND shots.root_uid = exa.uid) AS "#4mm", 
+                ( SELECT count(shots.root_uid) 
+                  FROM shots 
+                  WHERE (shots.c_sector_1 = 8 OR shots.c_sector_2 = 8 OR shots.c_sector_3 = 8 OR 
+                         shots.c_sector_4 = 8 OR shots.c_sector_5 = 8 OR shots.c_sector_6 = 8 OR 
+                         shots.c_sector_7 = 8 OR shots.c_sector_8 = 8) 
+                    AND shots.root_uid = exa.uid) AS "#8mm", 
+                ( SELECT count(shots.root_uid) 
+                  FROM shots 
+                  WHERE (shots.c_sector_1 = 16 OR shots.c_sector_2 = 16 OR shots.c_sector_3 = 16 OR 
+                         shots.c_sector_4 = 16 OR shots.c_sector_5 = 16 OR shots.c_sector_6 = 16 OR 
+                         shots.c_sector_7 = 16 OR shots.c_sector_8 = 16) 
+                    AND shots.root_uid = exa.uid) AS "#16mm", 
+                ( SELECT round(sum(shots.shot_time)::NUMERIC,0) 
+                  FROM shots 
+                  WHERE shots.root_uid = exa.uid) AS "T(min)",
+                exa.operator_name,
+                exa.comment
+            FROM patients as pat
+                LEFT JOIN examinations AS exa ON pat.uid = exa.parent_uid
+                LEFT JOIN volumes AS vol ON exa.uid = vol.root_uid
+                LEFT JOIN treatment_plans AS tre ON exa.uid = tre.root_uid
+                LEFT JOIN frames AS fra on exa.uid = fra.parent_uid
+                LEFT JOIN targets AS tar ON exa.uid = tar.root_uid AND tre.uid = tar.parent_uid
+                LEFT JOIN target_dose_optimization_settings as dos ON exa.uid = dos.root_uid
+                LEFT JOIN latest_dose_optimization_settings AS lat ON exa.uid = lat.root_uid
+                LEFT JOIN risk_volume_dose_optimization_settings AS ris ON exa.uid = ris.root_uid
+                LEFT JOIN shots AS sho ON exa.uid = sho.root_uid AND tar.uid = sho.parent_uid
+                LEFT JOIN segmented_skulls AS seg ON exa.uid = seg.ROOT_UID
             WHERE exa.date = :query_date
-            ORDER BY 
-                pat.last_name,
-                pat.first_name
-            LIMIT 50
+            GROUP BY 
+                pat.last_name, pat.first_name, pat.id, pat.birth_date, pat.examinations_count, pat.gender,
+                exa.date, exa.diagnosis_name, exa.uid,
+                tre.state, tre.name, tre.export_id, tre.treatment_number,
+                tar.uid, tar.name, tar.prescription_dose, tar.prescription_isodose,
+                sho.parent_uid, sho.gamma, sho.x, sho.shot_time,
+                fra.frame_type,
+                tar.name, tar.prescription_dose, tar.prescription_isodose,
+                sho.gamma
+            ORDER BY pat.last_name
         """
 
         with db.engine.connect() as connection:
-            result = connection.execute(text(query_str), {"query_date": query_date})
+            result = connection.execute(text(sql_query), {"query_date": query_date})
             patients = []
-            
             for row in result:
+                mapping = row._mapping  # Use the _mapping attribute to access keys safely
                 patient = {
-                    "Patient_Name": row.patient_name,
-                    "MRN": row.mrn,
-                    "Status": row.status,
-                    "Diagnosis": row.diagnosis if row.diagnosis else "N/A",
-                    "Exam_Date": row.exam_date.isoformat(),
-                    # These fields are not available in the database
+                    "Patient_Name": f"{mapping['L_Name']}, {mapping['F_Name']}",
+                    "MRN": mapping["MRN"],
+                    "DoB": mapping["DoB"].isoformat() if mapping["DoB"] else "N/A",
+                    "Age": mapping["Age"],
+                    "Sex": mapping["Sex"],
+                    # Use the "State" column as the patient's status
+                    "Status": mapping["State"],
+                    "Diagnosis": mapping["Diagnosis"] if mapping["Diagnosis"] else "N/A",
+                    "Exam_Date": mapping["ExamDate"].isoformat() if mapping["ExamDate"] else "N/A",
+                    "Plan": mapping["Plan"] if mapping["Plan"] else "N/A",
+                    "Fixation": mapping["Fixition"] if mapping["Fixition"] else "N/A",
+                    # For columns with special characters, use get() on the _mapping object
+                    "Targets": mapping.get("#Tar", "N/A"),
+                    "Shots": mapping.get("#sho", "N/A"),
+                    "Gamma": mapping["G"] if mapping["G"] is not None else "N/A",
+                    # Placeholders for values not available directly from the query
                     "Start_Time": None,
                     "End_Time": None,
-                    "Age": "N/A",
-                    "Sex": "N/A",
-                    "Plan": "N/A",
-                    "Fixation": "N/A",
-                    "Dose": "N/A",
-                    "Targets": "N/A",
-                    "Shots": "N/A",
-                    "Gamma": "N/A"
+                    "Dose": "N/A"
                 }
                 patients.append(patient)
 
@@ -90,20 +152,23 @@ def fetch_patient_data(date_param=None):
             return patients
 
     except Exception as e:
-        logger.error(f"Error fetching patient data: {str(e)}", exc_info=True)
+        logger.error("Error fetching detailed patient data: " + str(e), exc_info=True)
         return []
+
+
 
 @app.route('/patients')
 def get_patients():
     date_param = request.args.get('date')
-    patients = fetch_patient_data(date_param)
+    # Use the detailed fetch function here
+    patients = fetch_detailed_patient_data(date_param)
     return jsonify(patients)
+
 
 @app.route('/check-dates')
 def check_dates():
     try:
         with db.engine.connect() as connection:
-            # Get available examination dates
             exam_dates_query = text("""
                 SELECT DISTINCT date 
                 FROM examinations 
@@ -121,9 +186,11 @@ def check_dates():
         logger.error(f"Error checking dates: {e}")
         return jsonify({"error": str(e)})
 
+
 @app.route('/')
 def dashboard():
     return render_template('index.html')
+
 
 @app.route('/update-patient-status', methods=['POST'])
 def update_patient_status():
@@ -132,7 +199,7 @@ def update_patient_status():
         patient_id = data.get('mrn')
         new_status = data.get('status')
         
-        # Map status text to the numeric codes in your database
+        # Map status text to numeric values according to your schema
         status_map = {
             'Waiting': None,
             'Treatment': 2,
@@ -141,15 +208,12 @@ def update_patient_status():
             'Other': 0
         }
         
-        # If the status isn't in our map, return an error
         if new_status not in status_map:
             return jsonify({"success": False, "message": "Invalid status"}), 400
             
         db_status = status_map[new_status]
         
-        # Update the treatment plan state in the database
         with db.engine.connect() as connection:
-            # First, find the treatment plan associated with this patient
             find_query = text("""
                 SELECT tre.id
                 FROM patients pat
@@ -160,19 +224,15 @@ def update_patient_status():
             """)
             
             result = connection.execute(find_query, {"mrn": patient_id}).fetchone()
-            
             if result:
                 treatment_id = result[0]
-                # Update the status
                 update_query = text("""
                     UPDATE treatment_plans
                     SET state = :state
                     WHERE id = :id
                 """)
-                
                 connection.execute(update_query, {"state": db_status, "id": treatment_id})
                 connection.commit()
-                
                 return jsonify({"success": True, "message": f"Patient status updated to {new_status}"})
             else:
                 return jsonify({"success": False, "message": "Patient or treatment plan not found"}), 404
@@ -182,13 +242,10 @@ def update_patient_status():
         return jsonify({"success": False, "message": str(e)}), 500
 
 
-
-
 @app.route('/debug-tables')
 def debug_tables():
     try:
         with db.engine.connect() as connection:
-            # Get all tables and their columns that might contain time information
             query = text("""
                 SELECT 
                     t.table_name, 
@@ -217,11 +274,11 @@ def debug_tables():
     except Exception as e:
         return jsonify({"error": str(e)})
     
+
 @app.route('/debug-joins')
 def debug_joins():
     try:
         with db.engine.connect() as connection:
-            # Check examination-patient relationships
             exam_patient_query = text("""
                 SELECT 
                     e.date,
@@ -236,8 +293,6 @@ def debug_joins():
             """)
             
             join_stats = connection.execute(exam_patient_query).fetchall()
-            
-            # Check treatment plan relationships
             treatment_plan_query = text("""
                 SELECT 
                     COUNT(*) as total_plans,
@@ -247,7 +302,6 @@ def debug_joins():
             """)
             
             plan_stats = connection.execute(treatment_plan_query).fetchone()
-            
             return jsonify({
                 "examination_patient_stats": [
                     {
@@ -263,12 +317,11 @@ def debug_joins():
                     "matched_exams": plan_stats.matched_exams
                 }
             })
-            
     except Exception as e:
         return jsonify({"error": str(e)})
 
+
 if __name__ == '__main__':
-    # Verify database connection
     try:
         with db.engine.connect() as connection:
             result = connection.execute(text("SELECT 1"))
@@ -276,5 +329,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
     
-    # Run the Flask app
     app.run(host='0.0.0.0', port=5000, debug=True)
