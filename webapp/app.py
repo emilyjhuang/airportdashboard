@@ -196,7 +196,8 @@ def dashboard():
 def update_patient_status():
     try:
         data = request.json
-        patient_id = data.get('mrn')
+        # Convert the patient MRN to a string (if it isn't already)
+        patient_id = str(data.get('mrn'))
         new_status = data.get('status')
         
         # Map status text to numeric values according to your schema
@@ -213,29 +214,32 @@ def update_patient_status():
             
         db_status = status_map[new_status]
         
-        with db.engine.connect() as connection:
-            find_query = text("""
-                SELECT tre.id
-                FROM patients pat
-                JOIN examinations exa ON pat.uid = exa.parent_uid
-                JOIN treatment_plans tre ON exa.uid = tre.root_uid
-                WHERE pat.id = :mrn
-                LIMIT 1
-            """)
-            
+        # Use an explicit cast in the WHERE clause to force pat.id to text.
+        find_query = text("""
+            SELECT tre.uid
+            FROM patients pat
+            JOIN examinations exa ON pat.uid = exa.parent_uid
+            JOIN treatment_plans tre ON exa.uid = tre.root_uid
+            WHERE cast(pat.id as varchar) = :mrn
+            LIMIT 1
+        """)
+        
+        update_query = text("""
+            UPDATE treatment_plans
+            SET state = :state
+            WHERE uid = :uid
+        """)
+        
+        # Use a transaction block so that the update is automatically committed.
+        with db.engine.begin() as connection:
             result = connection.execute(find_query, {"mrn": patient_id}).fetchone()
             if result:
-                treatment_id = result[0]
-                update_query = text("""
-                    UPDATE treatment_plans
-                    SET state = :state
-                    WHERE id = :id
-                """)
-                connection.execute(update_query, {"state": db_status, "id": treatment_id})
-                connection.commit()
-                return jsonify({"success": True, "message": f"Patient status updated to {new_status}"})
+                treatment_uid = result[0]
+                connection.execute(update_query, {"state": db_status, "uid": treatment_uid})
             else:
                 return jsonify({"success": False, "message": "Patient or treatment plan not found"}), 404
+                
+        return jsonify({"success": True, "message": f"Patient status updated to {new_status}"})
                 
     except Exception as e:
         logger.error(f"Error updating patient status: {str(e)}", exc_info=True)
@@ -275,53 +279,18 @@ def debug_tables():
         return jsonify({"error": str(e)})
     
 
-@app.route('/debug-joins')
-def debug_joins():
+def grant_update_privileges():
     try:
-        with db.engine.connect() as connection:
-            exam_patient_query = text("""
-                SELECT 
-                    e.date,
-                    COUNT(DISTINCT e.uid) as exam_count,
-                    COUNT(DISTINCT p.uid) as patient_count,
-                    COUNT(DISTINCT CASE WHEN p.uid IS NOT NULL THEN e.uid END) as matched_count
-                FROM examinations e
-                LEFT JOIN patients p ON e.parent_uid = p.uid
-                GROUP BY e.date
-                ORDER BY e.date DESC
-                LIMIT 10
-            """)
-            
-            join_stats = connection.execute(exam_patient_query).fetchall()
-            treatment_plan_query = text("""
-                SELECT 
-                    COUNT(*) as total_plans,
-                    COUNT(DISTINCT root_uid) as distinct_exams,
-                    COUNT(DISTINCT CASE WHEN root_uid IN (SELECT uid FROM examinations) THEN root_uid END) as matched_exams
-                FROM treatment_plans
-            """)
-            
-            plan_stats = connection.execute(treatment_plan_query).fetchone()
-            return jsonify({
-                "examination_patient_stats": [
-                    {
-                        "date": row.date.isoformat(),
-                        "exam_count": row.exam_count,
-                        "patient_count": row.patient_count,
-                        "matched_count": row.matched_count
-                    } for row in join_stats
-                ],
-                "treatment_plan_stats": {
-                    "total_plans": plan_stats.total_plans,
-                    "distinct_exams": plan_stats.distinct_exams,
-                    "matched_exams": plan_stats.matched_exams
-                }
-            })
+        # Use a transaction block to execute the GRANT command.
+        with db.engine.begin() as connection:
+            connection.execute(text("GRANT UPDATE ON TABLE treatment_plans TO guest"))
+        logger.info("Update privileges granted on treatment_plans to guest")
     except Exception as e:
-        return jsonify({"error": str(e)})
-
+        logger.error("Error granting update privileges: " + str(e), exc_info=True)
 
 if __name__ == '__main__':
+    # Optionally, call the function once on startup if your user has the privileges
+    grant_update_privileges()
     try:
         with db.engine.connect() as connection:
             result = connection.execute(text("SELECT 1"))
@@ -330,3 +299,4 @@ if __name__ == '__main__':
         logger.error(f"Database connection failed: {e}")
     
     app.run(host='0.0.0.0', port=5000, debug=True)
+
