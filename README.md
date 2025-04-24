@@ -15,7 +15,7 @@ Langone GK
 
 - _Windows:_
   ```
-  python3 -m venv .venv
+  python -m venv .venv
   .venv\Scripts\activate
   ```
 
@@ -29,12 +29,14 @@ pip install pymongo
 pip install -r requirements.txt
 ```
 
-
+- _Mac:_
 ```
 export FLASK_APP=webapp/app.py 
 python -m flask run
 flask run
 ```
+
+- _Windows:_
 ```
 $env:FLASK_APP="webapp/app.py"
 flask run
