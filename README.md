@@ -22,10 +22,6 @@ Langone GK
 **5. Install Dependencies:**
 
 ```
-pip install opencv-python-headless
-pip install pytest pytest-cov
-pip install requests
-pip install pymongo
 pip install -r requirements.txt
 ```
 
