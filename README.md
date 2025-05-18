@@ -3,6 +3,8 @@
 Code for creating front end and back end for airplane patient dashboard that will include daily updates of patient information and status updates.
 Langone GK 
 
+**NOTE** this website will only work if connected to NYU network/IP address
+
 
 **4. Create a Virtual Environment:**
 
